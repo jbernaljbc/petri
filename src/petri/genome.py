@@ -2,6 +2,7 @@
 
 Ningún gen es gratis (los costos están en world.Rules): ser rápido o ver lejos ayuda a encontrar comida
 pero gasta energía en cada tick, así que la selección busca un equilibrio y no "todo al máximo".
+La confianza no cuesta nada: pesa solo en los encuentros, según lo que la célula decida con ella.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ LIMITS: dict[str, tuple[float, float, float]] = {
     "vision": (1.0, 6.0, 0.3),  # radio en casillas para ver comida
     "repro_threshold": (20.0, 120.0, 5.0),  # energía con la que se divide
     "child_share": (0.2, 0.7, 0.04),  # fracción de su energía que le pasa a la hija
+    "trust": (0.0, 1.0, 0.08),  # confianza en las demás: el modelo la recibe como su forma de ser
 }
 
 
@@ -24,6 +26,7 @@ class Genome:
     vision: float = 3.0
     repro_threshold: float = 60.0
     child_share: float = 0.4
+    trust: float = 0.5
 
     @classmethod
     def random(cls, rng: random.Random) -> Genome:

@@ -1,0 +1,17 @@
+# Petri en alfred. No es un servicio que quede corriendo: se lanza con
+#   docker compose run --rm petri run
+# Usa el Ollama de nani (127.0.0.1:11434) con la red del host, sin tocar el compose de nani.
+name: petri
+
+services:
+  petri:
+    build: .
+    image: petri
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      PETRI_MIND: ${PETRI_MIND:-llm}
+      PETRI_OLLAMA: ${PETRI_OLLAMA:-http://127.0.0.1:11434}
+      PETRI_MODEL: ${PETRI_MODEL:-nani-4b}
+      COLORTERM: truecolor

@@ -1,4 +1,5 @@
-"""Visor de terminal: la grilla (fondo verde = comida, punto de color = célula por linaje) y las cifras."""
+"""Visor de terminal: la grilla (fondo verde = comida, punto de color = célula por linaje), las cifras y
+lo último que decidieron las células en sus encuentros."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from .society import Society
 from .world import World
 
 LINEAGE_COLORS = [
@@ -16,12 +18,21 @@ LINEAGE_COLORS = [
     "deep_pink2", "dodger_blue1", "gold1", "plum1", "turquoise2", "salmon1",
 ]
 SPARK = "▁▂▃▄▅▆▇█"
-GENE_LABELS = {"speed": "velocidad", "vision": "visión", "repro_threshold": "umbral div.", "child_share": "% a la hija"}
+GENE_LABELS = {
+    "speed": "velocidad", "vision": "visión", "repro_threshold": "umbral div.", "child_share": "% a la hija",
+    "trust": "confianza",
+}
+ACTION_STYLES = {"compartir": "green", "atacar": "red", "ignorar": "dim", "hablar": "cyan"}
+
+
+def lineage_color(lineage: int) -> str:
+    return LINEAGE_COLORS[lineage % len(LINEAGE_COLORS)]
 
 
 class Viewer:
-    def __init__(self, world: World, history: int = 60) -> None:
+    def __init__(self, world: World, society: Society | None = None, history: int = 60) -> None:
         self.world = world
+        self.society = society
         self.population: deque[int] = deque(maxlen=history)
         self.encounters: deque[int] = deque(maxlen=history)
 
@@ -30,7 +41,10 @@ class Viewer:
         self.encounters.append(self.world.last.encounters)
 
     def render(self) -> Group:
-        return Group(self._grid(), self._stats())
+        parts = [self._grid(), self._stats()]
+        if self.society:
+            parts.append(self._log())
+        return Group(*parts)
 
     def _grid(self) -> Panel:
         w = self.world
@@ -41,9 +55,8 @@ class Viewer:
                 bg = f"rgb(0,{int(25 + 140 * level)},0)"
                 cell = w.cell_at(x, y)
                 if cell:
-                    color = LINEAGE_COLORS[cell.lineage % len(LINEAGE_COLORS)]
                     glyph = "●" if cell.energy >= cell.genome.repro_threshold / 2 else "○"  # ○ = con hambre
-                    text.append(glyph, style=f"{color} on {bg}")
+                    text.append(glyph, style=f"{lineage_color(cell.lineage)} on {bg}")
                     text.append(" ", style=f"on {bg}")
                 else:
                     text.append("  ", style=f"on {bg}")
@@ -62,7 +75,30 @@ class Viewer:
         table.add_row("comida · energía", f"{s['food']:.0f} · {s['energy']:.0f}")
         genes = "  ".join(f"{GENE_LABELS[k]} {v:.2f}" for k, v in s["genes"].items())
         table.add_row("genes (media)", genes or "—")
+        if soc := self.society:
+            table.add_row("mente", soc.mind.status)
+            total = sum(soc.actions.values()) or 1
+            actions = "  ".join(f"[{ACTION_STYLES[a]}]{a} {100 * soc.actions[a] / total:.0f}%[/]"
+                                for a in ACTION_STYLES)
+            table.add_row("decisiones", f"{sum(soc.actions.values())}  {actions}")
+            table.add_row("sin pensar · tarde", f"{soc.unthought} · {soc.late}")
         return table
+
+    def _log(self) -> Panel:
+        text = Text()
+        for e in reversed(self.society.log):
+            text.append(f"{e.tick:>5} ", style="dim")
+            text.append(f"#{e.cell}", style=lineage_color(e.lineage))
+            text.append(" → ")
+            text.append(f"#{e.other}", style=lineage_color(e.other_lineage) if e.other_lineage >= 0 else "dim")
+            text.append(f"  {e.action}", style=ACTION_STYLES.get(e.action, ""))
+            if e.say:
+                text.append(f"  «{e.say}»", style="italic")
+            if e.outcome:
+                text.append(f"  {e.outcome}", style="dim")
+            text.append("\n")
+        text.rstrip()
+        return Panel(text or Text("todavía nadie ha decidido nada", style="dim"), title="encuentros", expand=False)
 
 
 def _spark(values: deque[int]) -> str:

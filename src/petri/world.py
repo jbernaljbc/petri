@@ -4,14 +4,15 @@ Fase 1, sin modelo: cada célula va hacia la comida más rica que ve, come, gast
 se divide cuando junta bastante (la hija hereda el genoma con mutaciones) y muere sin energía o de vieja.
 Una casilla tiene a lo más una célula, así que el espacio también se compite.
 
-Los "encuentros" (dos células que pasan a ser vecinas) todavía no hacen nada: se cuentan porque en la
-fase 2 son el momento en que las células piensan con el modelo, y su frecuencia fija el presupuesto.
+Los "encuentros" (dos células que pasan a ser vecinas) quedan en `World.encounters` después de cada
+tick: society.py decide en cuáles piensan las células y aplica lo que deciden.
 """
 
 from __future__ import annotations
 
 import math
 import random
+from collections import deque
 from dataclasses import dataclass, field
 
 from .genome import Genome
@@ -51,6 +52,7 @@ class Cell:
     lineage: int = 0  # id de la fundadora de su linaje
     parent: int | None = None
     stride: float = 0.0  # fracción de paso acumulada (speed no es entera)
+    memory: deque[str] = field(default_factory=lambda: deque(maxlen=3))  # lo último que le pasó, para el modelo
 
 
 @dataclass(slots=True)
@@ -69,6 +71,7 @@ class World:
     tick: int = 0
     cells: dict[int, Cell] = field(default_factory=dict)
     last: TickStats = field(default_factory=TickStats)
+    encounters: list[tuple[int, int]] = field(default_factory=list)  # parejas nuevas del último tick
 
     def __post_init__(self) -> None:
         self.rng = random.Random(self.seed)
@@ -77,6 +80,7 @@ class World:
         self._at: dict[tuple[int, int], int] = {}
         self._next_id = 1
         self._pairs: set[tuple[int, int]] = set()
+        self.frozen: set[int] = set()  # células que se detuvieron a pensar: comen y gastan, pero no caminan
 
     # ---- armar el cultivo
 
@@ -144,7 +148,8 @@ class World:
         order = list(self.cells.values())
         self.rng.shuffle(order)
         for cell in order:
-            self._move(cell)
+            if cell.id not in self.frozen:
+                self._move(cell)
             self._eat(cell)
             cell.energy -= r.upkeep(cell.genome)
             if cell.energy <= 0:
@@ -155,7 +160,8 @@ class World:
             elif cell.energy >= cell.genome.repro_threshold and self._divide(cell):
                 stats.births += 1
         stats.deaths = len(order) + stats.births - len(self.cells)
-        stats.encounters = self._count_encounters()
+        self.encounters = self._new_encounters()
+        stats.encounters = len(self.encounters)
         self.last = stats
         return stats
 
@@ -231,15 +237,15 @@ class World:
         del self._at[(cell.x, cell.y)]
         del self.cells[cell.id]
 
-    def _count_encounters(self) -> int:
-        """Parejas de vecinas que no lo eran en el tick anterior."""
+    def _new_encounters(self) -> list[tuple[int, int]]:
+        """Parejas de vecinas que no lo eran en el tick anterior, en orden estable (id menor primero)."""
         pairs = set()
         for (x, y), cid in self._at.items():
             for dx, dy in NEIGHBORS[4:]:  # la mitad de los vecinos basta para ver cada pareja una vez
                 other = self._at.get(self.wrap(x + dx, y + dy))
                 if other:
                     pairs.add((min(cid, other), max(cid, other)))
-        new = len(pairs - self._pairs)
+        new = sorted(pairs - self._pairs)
         self._pairs = pairs
         return new
 
