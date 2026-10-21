@@ -2,6 +2,7 @@
 
   petri run        the culture live in the terminal (Ctrl+C to stop)
   petri headless   no viewer, a line of numbers every so often: for tuning the balance
+  petri serve      the culture with a live web dashboard (127.0.0.1:8780)
 
 --mind picks who decides in encounters: llm (nani-4b), rules (no model, the control group) or none
 (encounters do nothing). With --latency, rules answers as slowly as the model (in ticks): that's the
@@ -20,10 +21,12 @@ from rich.live import Live
 from .mind import OllamaMind, RulesMind
 from .society import Society
 from .viewer import ACTIONS, Viewer
+from .web import Hub
+from .web import serve as serve_web
 from .world import Rules, World
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
-console = Console()
+console = Console(soft_wrap=True)  # headless lines stay whole when the output isn't a terminal
 
 
 class MindKind(StrEnum):
@@ -124,6 +127,45 @@ def headless(
     genes = " ".join(f"{k[:5]}={v:.2f}" for k, v in world.summary()["genes"].items())
     console.print(f"[bold]end[/] t={world.tick} pop={len(world.cells)} peak={peak} births={births} "
                   f"encounters/tick={encounters / max(1, world.tick):.2f} {genes} {_actions(society)}")
+
+
+@app.command()
+def serve(
+    seed: int = typer.Option(1),
+    size: int = typer.Option(32),
+    cells: int = typer.Option(30),
+    ticks: int = typer.Option(0, help="stop after this many ticks (0 = until Ctrl+C or extinction)"),
+    tps: float = typer.Option(None, help="ticks per second (4; 10 without llm)"),
+    host: str = typer.Option("127.0.0.1", help="only localhost: open it through an ssh tunnel"),
+    port: int = typer.Option(8780),
+    fps: float = typer.Option(4, help="dashboard updates per second"),
+    immigrants: int = IMMIGRANTS,
+    mind: MindKind = MIND,
+    latency: int = LATENCY,
+    ollama: str = OLLAMA,
+    model: str = MODEL,
+) -> None:
+    """Runs the culture with a live web dashboard."""
+    world, society = _build(seed, size, cells, immigrants, mind, latency, ollama, model)
+    tps = tps or (4 if mind is MindKind.llm else 10)
+    hub = Hub()
+    meta = {"seed": seed, "tps": tps}
+    hub.publish(world, society, meta)
+    serve_web(hub, host, port, fps)
+    console.print(f"petri · seed {seed} · {mind} mind · dashboard at http://{host}:{port}")
+    try:
+        while world.cells and (not ticks or world.tick < ticks):
+            start = time.monotonic()
+            _step(world, society)
+            hub.publish(world, society, meta)
+            if world.tick % 500 == 0:
+                s = world.summary()
+                console.print(f"t={s['tick']:>5} pop={s['population']:>3} lin={s['lineages']:>2} "
+                              f"trust={s['genes'].get('trust', 0):.2f} {_actions(society)}")
+            time.sleep(max(0.0, 1 / tps - (time.monotonic() - start)))
+    except KeyboardInterrupt:
+        pass
+    _report(world, society)
 
 
 def _actions(society: Society | None) -> str:

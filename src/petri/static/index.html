@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Petri</title>
+<style>
+  :root {
+    --bg: #f6f7f4; --panel: #ffffff; --ink: #1d2320; --muted: #6b746f; --line: #e2e6e1;
+    --soil: #2a2a22; --grass: #5fae4a;
+    --share: #2f9e5b; --attack: #d6453d; --ignore: #9aa39d; --talk: #2b8fc9; --accent: #7a5cd6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111412; --panel: #191d1a; --ink: #e5ebe6; --muted: #8b958f; --line: #2a302c;
+      --soil: #161712; --grass: #4f9a3d;
+      --share: #46c07a; --attack: #f0645c; --ignore: #6d7671; --talk: #4fb0e8; --accent: #9d85ee;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; padding: 14px 16px 6px; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+  header .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #status { margin-left: auto; color: var(--muted); }
+  #status.off { color: var(--attack); }
+  main { display: grid; gap: 12px; padding: 8px 16px 20px;
+         grid-template-columns: minmax(280px, 560px) minmax(300px, 1fr); }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .panel h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--muted); }
+  canvas { display: block; width: 100%; }
+  #grid { aspect-ratio: 1; border-radius: 6px; image-rendering: pixelated; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .tile .k { font-size: 12px; color: var(--muted); }
+  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .side { display: grid; gap: 12px; align-content: start; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .two, .tiles { grid-template-columns: 1fr 1fr; } }
+  .wide { grid-column: 1 / -1; }
+  .charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 1100px) { .charts { grid-template-columns: 1fr; } }
+  .chart { height: 170px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td, th { padding: 3px 4px; text-align: right; }
+  th { font-weight: 500; color: var(--muted); font-size: 12px; }
+  td:first-child, th:first-child { text-align: left; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  #log { font: 13px/1.6 ui-monospace, "JetBrains Mono", Menlo, monospace; max-height: 320px; overflow: auto; }
+  #log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #log .t { color: var(--muted); }
+  #log .say { font-style: italic; }
+  #log .out { color: var(--muted); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Petri</h1>
+  <span class="meta" id="meta">connecting…</span>
+  <span id="status">●</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>Culture</h2>
+    <canvas id="grid" width="560" height="560"></canvas>
+    <div class="legend"><span>background = food</span><span>color = family</span><span>ring = hungry</span></div>
+  </section>
+
+  <div class="side">
+    <div class="tiles">
+      <div class="tile"><div class="k">Population</div><div class="v" id="pop">–</div></div>
+      <div class="tile"><div class="k">Families</div><div class="v" id="lin">–</div></div>
+      <div class="tile"><div class="k">Generation</div><div class="v" id="gen">–</div></div>
+      <div class="tile"><div class="k">Mean trust</div><div class="v" id="trust">–</div></div>
+    </div>
+    <div class="panel">
+      <h2>Mind</h2>
+      <div id="mind" class="muted">–</div>
+      <div class="legend" id="actionsNow"></div>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <h2>Trust in the population</h2>
+        <canvas id="hist" class="chart"></canvas>
+        <div class="legend"><span>0 = distrustful</span><span>1 = trusting</span></div>
+      </div>
+      <div class="panel">
+        <h2>Families</h2>
+        <table><thead><tr><th>family</th><th>cells</th><th>trust</th></tr></thead><tbody id="families"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts wide">
+    <div class="panel"><h2>Population and families</h2><canvas id="cPop" class="chart"></canvas>
+      <div class="legend"><span><i style="background:var(--ink)"></i>cells (left)</span><span><i style="background:var(--accent)"></i>families (right)</span></div></div>
+    <div class="panel"><h2>Mean trust</h2><canvas id="cTrust" class="chart"></canvas>
+      <div class="legend"><span>selection pressure shows up as a trend</span></div></div>
+    <div class="panel"><h2>What they decide (last ~100 ticks)</h2><canvas id="cAct" class="chart"></canvas>
+      <div class="legend" id="actLegend"></div></div>
+  </div>
+
+  <section class="panel wide">
+    <h2>Encounters</h2>
+    <div id="log"><span class="muted">nobody has decided anything yet</span></div>
+  </section>
+</main>
+
+<script>
+const ACTIONS = { compartir: ["share", "--share"], atacar: ["attack", "--attack"], ignorar: ["ignore", "--ignore"], hablar: ["talk", "--talk"] };
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+// each family gets a palette color that no living family is using, and keeps it while it lives
+const PALETTE = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"];
+const colors = new Map();
+function assignColors(families) {
+  const alive = new Set(families.map(f => f[0]));
+  for (const id of colors.keys()) if (!alive.has(id)) colors.delete(id);
+  for (const [id] of families) {
+    if (colors.has(id)) continue;
+    const used = new Set(colors.values());
+    colors.set(id, PALETTE.find(c => !used.has(c)) || PALETTE[id % PALETTE.length]);
+  }
+}
+const familyColor = id => colors.get(id) || "#888";
+const $ = id => document.getElementById(id);
+let history = [];
+let last = null;
+
+function hiDPI(canvas) {
+  const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(r.width * d) || canvas.height !== Math.round(r.height * d)) {
+    canvas.width = Math.round(r.width * d); canvas.height = Math.round(r.height * d);
+  }
+  const ctx = canvas.getContext("2d"); ctx.setTransform(d, 0, 0, d, 0, 0);
+  return [ctx, r.width, r.height];
+}
+
+function mix(a, b, t) {
+  const pa = a.match(/\w\w/g).map(h => parseInt(h, 16)), pb = b.match(/\w\w/g).map(h => parseInt(h, 16));
+  return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * t)).join(",")})`;
+}
+
+function drawGrid(s) {
+  const [ctx, w] = hiDPI($("grid"));
+  const n = s.width, size = w / n, soil = css("--soil"), grass = css("--grass");
+  const shades = Array.from({ length: 10 }, (_, i) => mix(soil, grass, i / 9));
+  for (let y = 0; y < s.height; y++) for (let x = 0; x < n; x++) {
+    ctx.fillStyle = shades[s.food[y * n + x]];
+    ctx.fillRect(x * size, y * size, size + 0.5, size + 0.5);
+  }
+  for (const [x, y, lin, hungry] of s.cells) {
+    const cx = (x + .5) * size, cy = (y + .5) * size, r = size * .36;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    if (hungry) { ctx.lineWidth = Math.max(1.5, size * .12); ctx.strokeStyle = familyColor(lin); ctx.stroke(); }
+    else { ctx.fillStyle = familyColor(lin); ctx.fill(); }
+  }
+}
+
+function axes(ctx, w, h, pad, ymax, fmt, right) {
+  ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--muted"); ctx.lineWidth = 1;
+  ctx.font = "11px ui-sans-serif, system-ui"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let i = 0; i <= 2; i++) {
+    const y = pad.t + (h - pad.t - pad.b) * (1 - i / 2);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillText(fmt(ymax * i / 2), pad.l - 6, y);
+    if (right) { ctx.textAlign = "left"; ctx.fillStyle = right.color; ctx.fillText(Math.round(right.max * i / 2), w - pad.r + 6, y);
+                 ctx.textAlign = "right"; ctx.fillStyle = css("--muted"); }
+  }
+}
+
+function line(canvas, series, ymax, fmt, right) {
+  const [ctx, w, h] = hiDPI(canvas), pad = { l: 34, r: right ? 30 : 8, t: 8, b: 18 };
+  ctx.clearRect(0, 0, w, h);
+  axes(ctx, w, h, pad, ymax, fmt, right);
+  if (history.length < 2) return;
+  const t0 = history[0].t, t1 = history[history.length - 1].t || 1;
+  const X = t => pad.l + (w - pad.l - pad.r) * (t - t0) / Math.max(1, t1 - t0);
+  const Y = v => pad.t + (h - pad.t - pad.b) * (1 - v / ymax);
+  ctx.fillStyle = css("--muted"); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(`tick ${t0}`, pad.l, h - 4); ctx.textAlign = "right"; ctx.fillText(`${t1}`, w - pad.r, h - 4);
+  for (const { value, color } of series) {
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = "round";
+    history.forEach((p, i) => { const x = X(p.t), y = Y(value(p)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+}
+
+function actionMix() {
+  // per point: share of each action among the decisions of the previous ~100 ticks
+  const out = [];
+  let j = 0;
+  for (let i = 0; i < history.length; i++) {
+    while (history[i].t - history[j].t > 100) j++;
+    const a = history[i].actions, b = history[j].actions;
+    const d = Object.fromEntries(Object.keys(ACTIONS).map(k => [k, (a[k] || 0) - (b[k] || 0)]));
+    const total = Object.values(d).reduce((x, y) => x + y, 0);
+    out.push({ t: history[i].t, total, d });
+  }
+  return out;
+}
+
+function stacked(canvas) {
+  const [ctx, w, h] = hiDPI(canvas), pad = { l: 34, r: 8, t: 8, b: 18 };
+  ctx.clearRect(0, 0, w, h);
+  axes(ctx, w, h, pad, 100, v => `${v}%`);
+  const mixes = actionMix().filter(m => m.total > 0);
+  if (mixes.length < 2) return;
+  const t0 = mixes[0].t, t1 = mixes[mixes.length - 1].t;
+  const X = t => pad.l + (w - pad.l - pad.r) * (t - t0) / Math.max(1, t1 - t0);
+  const Y = v => pad.t + (h - pad.t - pad.b) * (1 - v);
+  let base = mixes.map(() => 0);
+  for (const [k, [, color]] of Object.entries(ACTIONS)) {
+    const top = mixes.map((m, i) => base[i] + m.d[k] / m.total);
+    ctx.beginPath();
+    mixes.forEach((m, i) => i ? ctx.lineTo(X(m.t), Y(top[i])) : ctx.moveTo(X(m.t), Y(top[i])));
+    for (let i = mixes.length - 1; i >= 0; i--) ctx.lineTo(X(mixes[i].t), Y(base[i]));
+    ctx.closePath(); ctx.fillStyle = css(color); ctx.globalAlpha = .85; ctx.fill(); ctx.globalAlpha = 1;
+    base = top;
+  }
+}
+
+function histogram(s) {
+  const [ctx, w, h] = hiDPI($("hist")), pad = { l: 26, r: 4, t: 8, b: 18 };
+  ctx.clearRect(0, 0, w, h);
+  const bins = Array(10).fill(0);
+  for (const c of s.cells) bins[Math.min(9, Math.floor(c[4] * 10))]++;
+  const ymax = Math.max(4, ...bins);
+  axes(ctx, w, h, pad, ymax, v => Math.round(v));
+  const bw = (w - pad.l - pad.r) / 10;
+  bins.forEach((v, i) => {
+    const bh = (h - pad.t - pad.b) * v / ymax;
+    ctx.fillStyle = mix(css("--attack").slice(1), css("--share").slice(1), i / 9);
+    ctx.fillRect(pad.l + i * bw + 2, h - pad.b - bh, bw - 4, bh);
+  });
+  ctx.fillStyle = css("--muted"); ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left"; ctx.fillText("0", pad.l, h - 4); ctx.textAlign = "right"; ctx.fillText("1", w - pad.r, h - 4);
+}
+
+function esc(text) { const d = document.createElement("div"); d.textContent = text; return d.innerHTML; }
+
+function render() {
+  const s = last; if (!s) return;
+  assignColors(s.families);
+  $("meta").textContent = `seed ${s.seed} · tick ${s.tick} · ${s.tps} ticks/s`;
+  $("pop").textContent = s.summary.population;
+  $("lin").textContent = s.summary.lineages;
+  $("gen").textContent = s.summary.max_generation;
+  $("trust").textContent = (s.summary.genes.trust ?? 0).toFixed(2);
+  const acts = s.point.actions, total = Object.values(acts).reduce((a, b) => a + b, 0) || 1;
+  $("mind").textContent = `${s.mind} · ${s.thoughts} thoughts · ${s.unthought} unthought · ${s.late} late`;
+  $("actionsNow").innerHTML = Object.entries(ACTIONS).map(([k, [label, color]]) =>
+    `<span><i style="background:var(${color})"></i>${label} ${Math.round(100 * (acts[k] || 0) / total)}%</span>`).join("");
+  $("actLegend").innerHTML = Object.values(ACTIONS).map(([label, color]) =>
+    `<span><i style="background:var(${color})"></i>${label}</span>`).join("");
+  $("families").innerHTML = s.families.slice(0, 8).map(([lin, n, trust]) =>
+    `<tr><td><span class="dot" style="background:${familyColor(lin)}"></span>#${lin}</td><td>${n}</td><td>${trust.toFixed(2)}</td></tr>`).join("");
+  $("log").innerHTML = s.log.length ? s.log.slice().reverse().map(e => {
+    const [label, color] = ACTIONS[e.action] || [e.action, "--muted"];
+    const other = e.bl >= 0 ? `style="color:${familyColor(e.bl)}"` : 'class="muted"';
+    return `<div><span class="t">${String(e.t).padStart(6)}</span> <span style="color:${familyColor(e.al)}">#${e.a}</span> → <span ${other}>#${e.b}</span> ` +
+      `<b style="color:var(${color})">${label}</b>${e.say ? ` <span class="say">«${esc(e.say)}»</span>` : ""}${e.outcome ? ` <span class="out">${esc(e.outcome)}</span>` : ""}</div>`;
+  }).join("") : '<span class="muted">nobody has decided anything yet</span>';
+  drawGrid(s);
+  histogram(s);
+  const popMax = Math.max(10, ...history.map(p => p.pop)) * 1.1;
+  const linMax = Math.max(4, ...history.map(p => p.lin)) * 1.1;
+  line($("cPop"), [{ value: p => p.pop, color: css("--ink") }, { value: p => p.lin * popMax / linMax, color: css("--accent") }],
+       popMax, v => Math.round(v), { max: linMax, color: css("--accent") });
+  line($("cTrust"), [{ value: p => p.trust, color: css("--accent") }], 1, v => v.toFixed(1));
+  stacked($("cAct"));
+}
+
+let frame = 0;
+function schedule() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; render(); }); }
+
+function connect() {
+  const source = new EventSource("events");
+  source.onopen = () => { $("status").className = ""; $("status").title = "live"; };
+  source.onerror = () => { $("status").className = "off"; $("status").title = "disconnected, retrying"; };
+  source.onmessage = ev => {
+    const data = JSON.parse(ev.data);
+    if (data.history) { history = data.history; return; }
+    last = data;
+    const end = history[history.length - 1];
+    if (!end || data.point.t - end.t >= data.every) history.push(data.point);
+    else if (data.point.t < end.t) history = [data.point];  // a new run started
+    schedule();
+  };
+}
+window.addEventListener("resize", schedule);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+connect();
+</script>
+</body>
+</html>

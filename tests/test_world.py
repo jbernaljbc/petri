@@ -77,8 +77,14 @@ def test_torus_delta_takes_shortest_way():
     assert world.delta(9, 1, 10) == 2
 
 
-def test_immigrants_bring_new_families():
-    world = _world(cells=5, immigrants=50)
-    arrived = sum(world.step().immigrants for _ in range(200))
-    assert arrived == 4
-    assert world._next_id - 1 >= 5 + 4
+def test_immigrants_arrive_as_a_family_with_a_local_body():
+    world = _world(cells=40, immigrants=50)
+    _run(world, 49)
+    before = set(world.cells)
+    stats = world.step()
+    newcomers = [c for c in world.cells.values() if c.id not in before and c.parent is None]
+    assert stats.immigrants == len(newcomers) == 3
+    assert len({c.lineage for c in newcomers}) == 1
+    assert newcomers[0].lineage not in {c.lineage for c in world.cells.values() if c.id in before}
+    speeds = {round(c.genome.speed, 6) for c in world.cells.values() if c.id in before}
+    assert all(any(abs(c.genome.speed - s) < 0.8 for s in speeds) for c in newcomers)  # body close to a local

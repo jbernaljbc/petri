@@ -3,7 +3,9 @@
 Without a model: each cell heads for the richest food it can see, eats, spends energy according to its
 genome, divides once it has gathered enough (the daughter inherits the genome with mutations) and dies
 when it runs out of energy or of old age. A tile holds at most one cell, so space is contested too.
-Every so often an immigrant from a new family arrives, so a single lineage never stays alone forever.
+Every so often a small group of immigrants from a new family arrives, so a single lineage never stays
+alone forever. Their body comes from a local cell (with mutations) and only their trust is foreign: with
+a random genome they died within ~60 ticks, before ever dividing, in a world 30 generations in.
 
 "Encounters" (two cells that just became neighbors) are left in `World.encounters` after each tick:
 society.py decides which of them the cells think about and applies what they decide.
@@ -14,7 +16,7 @@ from __future__ import annotations
 import math
 import random
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .genome import Genome
 
@@ -36,7 +38,8 @@ class Rules:
     max_age: int = 500
     mutation_rate: float = 0.3
     start_energy: float = 40.0
-    immigrants: int = 300  # every how many ticks a cell from a new family arrives (0 = never)
+    immigrants: int = 300  # every how many ticks a new family arrives (0 = never)
+    immigrant_group: int = 3  # cells per immigrant family
 
     def upkeep(self, genome: Genome) -> float:
         return self.base_cost + self.speed_cost * genome.speed**2 + self.vision_cost * genome.vision
@@ -113,6 +116,26 @@ class World:
             cell.lineage = cell.id
         return len(spots)
 
+    def _immigrate(self) -> int:
+        """A group lands together on a free spot: a local cell's body (mutated), random trust, new family."""
+        free = [(x, y) for y in range(self.rules.height) for x in range(self.rules.width) if (x, y) not in self._at]
+        if not free:
+            return 0
+        landing = self.rng.choice(free)
+        spots = [landing] + self.free_neighbors(*landing)[: self.rules.immigrant_group - 1]
+        locals_ = list(self.cells.values())
+        lineage = None
+        for x, y in spots:
+            if locals_:
+                body = self.rng.choice(locals_).genome.mutate(self.rng, self.rules.mutation_rate)
+                genome = replace(body, trust=self.rng.random())
+            else:
+                genome = Genome.random(self.rng)
+            cell = self._add(x, y, self.rules.start_energy, genome)
+            lineage = lineage or cell.id
+            cell.lineage = lineage
+        return len(spots)
+
     def _add(self, x: int, y: int, energy: float, genome: Genome, parent: Cell | None = None) -> Cell:
         cell = Cell(id=self._next_id, x=x, y=y, energy=energy, genome=genome, born=self.tick)
         if parent:
@@ -167,7 +190,7 @@ class World:
                 stats.births += 1
         stats.deaths = len(order) + stats.births - len(self.cells)
         if r.immigrants and self.tick % r.immigrants == 0:
-            stats.immigrants = self.seed_cells(1)
+            stats.immigrants = self._immigrate()
         self.encounters = self._new_encounters()
         stats.encounters = len(self.encounters)
         self.last = stats

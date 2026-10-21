@@ -17,6 +17,18 @@ ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri run'
 ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri headless --ticks 2000'
 ```
 
+A long-running culture with a **live web dashboard** (grid, population and families, mean trust over
+time, the trust distribution, what they decide, and the latest encounters with their phrases):
+
+```
+ssh alfred 'cd ~/Projects/petri && docker compose --profile live up -d'   # PETRI_SEED=3 … for another seed
+scripts/pc/dashboard.sh                                                    # tunnel + browser on the PC
+ssh alfred 'cd ~/Projects/petri && docker compose --profile live down'
+```
+
+The dashboard is plain HTML served by petri itself (`petri serve`, standard library only, Server-Sent
+Events) on 127.0.0.1:8780; it can be opened or reloaded at any point of a run.
+
 Comparison (logs in `~/petri-runs/<date>/` plus a `summary.txt`; ~17 min per seed with the model):
 
 ```
@@ -30,6 +42,7 @@ uv sync
 uv run petri run                         # "rules" mind: no model, the control group
 uv run petri run --mind none --speed 5   # encounters do nothing
 uv run petri headless --ticks 5000       # no viewer: numbers every 250 ticks
+uv run petri serve                       # web dashboard at http://127.0.0.1:8780
 ssh -N -L 11435:127.0.0.1:11434 alfred &
 uv run petri run --mind llm --ollama http://127.0.0.1:11435
 uv run pytest
@@ -44,8 +57,11 @@ uv run pytest
 - It heads for the richest food it can see, eats, spends, divides when it reaches its threshold (the
   daughter inherits the genome with mutations, and the lineage) and dies when it runs out of energy or
   after 500 ticks; whatever it had left goes back to the ground as food. One cell per tile.
-- Every 300 ticks an **immigrant** from a new family arrives (`--immigrants`, 0 = never): without them
-  one family wins before tick ~2000 and from then on every encounter is between relatives.
+- Every 300 ticks a group of 3 **immigrants** from a new family lands together (`--immigrants`,
+  0 = never). Their body (speed, vision, division) is a mutated copy of a local cell's and only their
+  trust is random: with fully random genomes they died within ~60 ticks without ever dividing. With
+  them 3–5 families coexist; without them one family wins before tick ~2000 and from then on every
+  encounter is between relatives.
 
 ## Encounters
 
@@ -81,5 +97,6 @@ below, the latest decisions. Same seed and `rules` mind, same culture.
 | 1. World without a model: food, energy, genome, mutation, terminal viewer | ✅ | |
 | 2. Encounters with nani-4b, trust gene, short memory, compose on alfred | ✅ | |
 | 2b. Immigrants, control group with the model's latency, comparison script | ✅ | |
+| 2c. Immigrant families with a local body, live web dashboard | ✅ | |
 | 3. Inherited text personality, traces (messages left on tiles) | ⏳ | |
 | 4. History in SQLite and evolution charts | ⏳ | |

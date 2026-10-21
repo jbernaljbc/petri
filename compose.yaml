@@ -15,3 +15,16 @@ services:
       PETRI_OLLAMA: ${PETRI_OLLAMA:-http://127.0.0.1:11434}
       PETRI_MODEL: ${PETRI_MODEL:-nani-4b}
       COLORTERM: truecolor
+
+  # A long-running culture with the web dashboard on 127.0.0.1:8780 (from the PC: scripts/pc/dashboard.sh)
+  #   docker compose --profile live up -d          PETRI_SEED=3 docker compose --profile live up -d
+  live:
+    image: petri
+    profiles: ["live"]
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PETRI_MIND: ${PETRI_MIND:-llm}
+      PETRI_OLLAMA: ${PETRI_OLLAMA:-http://127.0.0.1:11434}
+      PETRI_MODEL: ${PETRI_MODEL:-nani-4b}
+    command: ["serve", "--seed", "${PETRI_SEED:-1}"]
