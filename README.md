@@ -11,6 +11,12 @@ ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri run'
 ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri headless --ticks 2000'
 ```
 
+Comparación (deja logs en `~/petri-runs/<fecha>/` y un `resumen.txt`; ~17 min por semilla con el modelo):
+
+```
+ssh alfred 'cd ~/Projects/petri && nohup scripts/alfred/compare.sh 1 2 3 >/dev/null 2>&1 &'
+```
+
 En el PC, sin modelo o con un túnel al Ollama de alfred:
 
 ```
@@ -50,8 +56,13 @@ segundo eso da ~80 decisiones por minuto, casi todas aplicadas. Los pedidos van 
 nani mientras tanto, espera a lo más una respuesta corta; y si la GPU tiene cargado otro modelo, petri se
 pausa en vez de sacarlo.
 
-`--mind rules` decide sin modelo, con la confianza y el hambre, en todos los encuentros: es el grupo de
-control (¿cambia algo que piense un modelo?) y la mente de los tests.
+`--mind rules` decide sin modelo, con la confianza y el hambre: es el grupo de control (¿cambia algo que
+piense un modelo?) y la mente de los tests. Sola piensa en todos los encuentros; con `--latency 3`
+contesta de a una cada 3 ticks, como nani-4b a 4 ticks/s, y piensa en los mismos pocos: esa es la
+comparación justa.
+
+Cada 300 ticks llega una **inmigrante** de una familia nueva (`--immigrants`, 0 = nunca): sin ellas una
+familia gana antes del tick ~2000 y desde ahí todos los encuentros son entre parientes.
 
 En el visor el fondo verde es la comida, el color del punto es el linaje y `○` es una célula con hambre;
 abajo, lo último que decidieron. Misma semilla y mente `rules`, mismo cultivo.

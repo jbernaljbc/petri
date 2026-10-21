@@ -1,7 +1,9 @@
 """Las mentes: quién decide qué hace una célula en un encuentro.
 
 - RulesMind: sin modelo, con la confianza y el hambre. Es el grupo de control del experimento (¿cambia
-  algo que piense un modelo?) y la que usan los tests: misma semilla, mismo cultivo.
+  algo que piense un modelo?) y la que usan los tests: misma semilla, mismo cultivo. Con `latency`
+  contesta de a una y tarda esos ticks en cada respuesta, como el modelo: así el control piensa en los
+  mismos pocos encuentros y la comparación es justa.
 - OllamaMind: nani-4b en el Ollama de nani en alfred. Un hilo aparte hace los pedidos de a uno, así nani
   espera a lo más una respuesta corta si le hablan mientras tanto. No manda num_ctx ni keep_alive (si
   no coinciden con los de nani, Ollama recargaría el modelo) y se pausa si la GPU tiene otro modelo
@@ -23,20 +25,34 @@ from .society import ACTIONS, Decision, Request
 
 
 class RulesMind:
-    def __init__(self, seed: int) -> None:
+    def __init__(self, seed: int, latency: int = 0) -> None:
         self.rng = random.Random(seed)
-        self.status = "reglas (sin modelo)"
+        self.latency = latency  # ticks por respuesta; 0 = contesta al tiro y piensan todos los encuentros
+        self.slow = latency > 0
+        self.status = f"reglas, {latency} ticks por respuesta (como el modelo)" if self.slow else "reglas (sin modelo)"
+        self._queue: deque[Request] = deque()
         self._out: list[Decision] = []
+        self._clock = 0
 
     def submit(self, request: Request) -> None:
-        self._out.append(Decision(request, self._decide(request)))
+        if self.slow:
+            self._queue.append(request)
+        else:
+            self._out.append(Decision(request, self._decide(request)))
 
     def poll(self) -> list[Decision]:
+        """Se llama una vez por tick: con latencia, cada `latency` ticks sale una respuesta."""
+        if self._queue:
+            self._clock += 1
+            if self._clock >= self.latency:
+                self._clock = 0
+                request = self._queue.popleft()
+                self._out.append(Decision(request, self._decide(request)))
         out, self._out = self._out, []
         return out
 
     def backlog(self) -> int:
-        return 0  # contesta al tiro: piensan todos los encuentros
+        return len(self._queue)
 
     def _decide(self, r: Request) -> str:
         hungry = r.energy < 0.4 * r.threshold
@@ -101,6 +117,7 @@ class OllamaMind:
         self.url = url.rstrip("/")
         self.model = model
         self.status = "esperando"
+        self.slow = True
         self.latencies: deque[float] = deque(maxlen=20)
         self.errors = 0
         self._client = httpx.Client(base_url=self.url, timeout=timeout)

@@ -8,6 +8,7 @@ class SlowMind:
     """Una mente que no contesta hasta que el test lo dice, para ver qué pasa con las respuestas tardías."""
 
     status = "lenta"
+    slow = True
 
     def __init__(self) -> None:
         self.queue: list[Request] = []
@@ -120,3 +121,25 @@ def test_parse_keeps_known_actions_and_short_phrases():
     assert _parse('{"accion": "volar", "dice": "hola"}') == {"accion": "ignorar", "dice": "hola"}
     long = " ".join(["palabra"] * 30)
     assert len(_parse(f'{{"accion": "hablar", "dice": "{long}"}}')["dice"].split()) == 12
+
+
+def test_instant_mind_thinks_every_encounter_even_hungry_ones():
+    world = World(Rules(width=10, height=10), seed=1)
+    for x in range(0, 10, 2):  # cinco parejas, todas con hambre
+        world._add(x, 2, 2.0, Genome())
+        world._add(x, 3, 2.0, Genome())
+    world.encounters = world._new_encounters()
+    society = Society(world, RulesMind(1))
+    society.after_step()
+    assert society.thoughts == 2 * len(world.encounters)
+    assert society.unthought == 0
+
+
+def test_rules_with_latency_answers_one_at_a_time():
+    world, a, b = _pair()
+    mind = RulesMind(1, latency=3)
+    society = Society(world, mind)
+    society.after_step()
+    assert mind.backlog() == 2
+    answered = sum(len(mind.poll()) for _ in range(6))
+    assert answered == 2 and mind.backlog() == 0

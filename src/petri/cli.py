@@ -4,7 +4,8 @@
   petri headless   sin visor, una línea de cifras cada tanto: para afinar el equilibrio
 
 --mind elige quién decide en los encuentros: llm (nani-4b), rules (sin modelo, el grupo de control) o
-none (los encuentros no hacen nada, como en la fase 1).
+none (los encuentros no hacen nada, como en la fase 1). Con --latency, rules contesta tan lento como el
+modelo (en ticks): es el grupo de control justo para comparar con llm.
 """
 
 from __future__ import annotations
@@ -34,14 +35,18 @@ class MindKind(StrEnum):
 MIND = typer.Option(MindKind.rules, envvar="PETRI_MIND", help="quién decide en los encuentros")
 OLLAMA = typer.Option("http://127.0.0.1:11434", envvar="PETRI_OLLAMA", help="Ollama de nani")
 MODEL = typer.Option("nani-4b", envvar="PETRI_MODEL")
+LATENCY = typer.Option(0, help="rules: ticks por respuesta, de a una (3 ≈ nani-4b a 4 ticks/s)")
+IMMIGRANTS = typer.Option(300, help="cada cuántos ticks llega una familia nueva (0 = nunca)")
 
 
-def _build(seed: int, size: int, cells: int, mind: MindKind, ollama: str, model: str) -> tuple[World, Society | None]:
-    world = World(Rules(width=size, height=size), seed=seed)
+def _build(
+    seed: int, size: int, cells: int, immigrants: int, mind: MindKind, latency: int, ollama: str, model: str
+) -> tuple[World, Society | None]:
+    world = World(Rules(width=size, height=size, immigrants=immigrants), seed=seed)
     world.seed_cells(cells)
     if mind is MindKind.none:
         return world, None
-    brain = OllamaMind(ollama, model) if mind is MindKind.llm else RulesMind(seed)
+    brain = OllamaMind(ollama, model) if mind is MindKind.llm else RulesMind(seed, latency)
     return world, Society(world, brain)
 
 
@@ -58,12 +63,14 @@ def run(
     cells: int = typer.Option(30, help="células al sembrar"),
     fps: float = typer.Option(None, help="cuadros por segundo (10; 4 con llm, para que alcancen a pensar)"),
     ticks_per_frame: int = typer.Option(1, "--speed", help="ticks por cuadro"),
+    immigrants: int = IMMIGRANTS,
     mind: MindKind = MIND,
+    latency: int = LATENCY,
     ollama: str = OLLAMA,
     model: str = MODEL,
 ) -> None:
     """Siembra un cultivo y lo muestra en vivo."""
-    world, society = _build(seed, size, cells, mind, ollama, model)
+    world, society = _build(seed, size, cells, immigrants, mind, latency, ollama, model)
     fps = fps or (4 if mind is MindKind.llm else 10)
     viewer = Viewer(world, society)
     viewer.record()
@@ -88,12 +95,14 @@ def headless(
     ticks: int = typer.Option(5000, help="ticks como máximo (para antes si se extinguen)"),
     every: int = typer.Option(250, help="cada cuántos ticks imprime una línea"),
     tps: float = typer.Option(None, help="ticks por segundo (sin límite; 4 con llm)"),
+    immigrants: int = IMMIGRANTS,
     mind: MindKind = MIND,
+    latency: int = LATENCY,
     ollama: str = OLLAMA,
     model: str = MODEL,
 ) -> None:
     """Corre el cultivo sin visor e imprime la evolución."""
-    world, society = _build(seed, size, cells, mind, ollama, model)
+    world, society = _build(seed, size, cells, immigrants, mind, latency, ollama, model)
     tps = tps or (4 if mind is MindKind.llm else 0)
     encounters = births = 0
     peak = len(world.cells)
@@ -112,8 +121,9 @@ def headless(
                 time.sleep(1 / tps)
     except KeyboardInterrupt:
         pass
+    genes = " ".join(f"{k[:5]}={v:.2f}" for k, v in world.summary()["genes"].items())
     console.print(f"[bold]fin[/] t={world.tick} pob={len(world.cells)} pico={peak} nacimientos={births} "
-                  f"encuentros/tick={encounters / max(1, world.tick):.2f} {_actions(society)}")
+                  f"encuentros/tick={encounters / max(1, world.tick):.2f} {genes} {_actions(society)}")
 
 
 def _actions(society: Society | None) -> str:

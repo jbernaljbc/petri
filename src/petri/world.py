@@ -2,7 +2,8 @@
 
 Fase 1, sin modelo: cada célula va hacia la comida más rica que ve, come, gasta energía según su genoma,
 se divide cuando junta bastante (la hija hereda el genoma con mutaciones) y muere sin energía o de vieja.
-Una casilla tiene a lo más una célula, así que el espacio también se compite.
+Una casilla tiene a lo más una célula, así que el espacio también se compite. Cada tanto llega una
+inmigrante de una familia nueva, para que nunca quede un solo linaje para siempre.
 
 Los "encuentros" (dos células que pasan a ser vecinas) quedan en `World.encounters` después de cada
 tick: society.py decide en cuáles piensan las células y aplica lo que deciden.
@@ -35,6 +36,7 @@ class Rules:
     max_age: int = 500
     mutation_rate: float = 0.3
     start_energy: float = 40.0
+    immigrants: int = 300  # cada cuántos ticks llega una célula de una familia nueva (0 = nunca)
 
     def upkeep(self, genome: Genome) -> float:
         return self.base_cost + self.speed_cost * genome.speed**2 + self.vision_cost * genome.vision
@@ -61,6 +63,7 @@ class TickStats:
     deaths: int = 0
     starved: int = 0
     encounters: int = 0
+    immigrants: int = 0
 
 
 @dataclass
@@ -101,11 +104,14 @@ class World:
         top = max(raw) or 1.0
         return [0.05 + 0.95 * v / top for v in raw]
 
-    def seed_cells(self, count: int) -> None:
+    def seed_cells(self, count: int) -> int:
+        """Siembra fundadoras (o inmigrantes): genoma al azar y una familia nueva cada una."""
         free = [(x, y) for y in range(self.rules.height) for x in range(self.rules.width) if (x, y) not in self._at]
-        for x, y in self.rng.sample(free, min(count, len(free))):
+        spots = self.rng.sample(free, min(count, len(free)))
+        for x, y in spots:
             cell = self._add(x, y, self.rules.start_energy, Genome.random(self.rng))
             cell.lineage = cell.id
+        return len(spots)
 
     def _add(self, x: int, y: int, energy: float, genome: Genome, parent: Cell | None = None) -> Cell:
         cell = Cell(id=self._next_id, x=x, y=y, energy=energy, genome=genome, born=self.tick)
@@ -160,6 +166,8 @@ class World:
             elif cell.energy >= cell.genome.repro_threshold and self._divide(cell):
                 stats.births += 1
         stats.deaths = len(order) + stats.births - len(self.cells)
+        if r.immigrants and self.tick % r.immigrants == 0:
+            stats.immigrants = self.seed_cells(1)
         self.encounters = self._new_encounters()
         stats.encounters = len(self.encounters)
         self.last = stats

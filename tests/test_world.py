@@ -75,3 +75,10 @@ def test_torus_delta_takes_shortest_way():
     world = World(Rules(width=10, height=10), seed=1)
     assert world.delta(1, 9, 10) == -2
     assert world.delta(9, 1, 10) == 2
+
+
+def test_immigrants_bring_new_families():
+    world = _world(cells=5, immigrants=50)
+    arrived = sum(world.step().immigrants for _ in range(200))
+    assert arrived == 4
+    assert world._next_id - 1 >= 5 + 4

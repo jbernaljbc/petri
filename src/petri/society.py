@@ -1,12 +1,12 @@
 """Los encuentros: en cuáles piensan las células, qué saben al pensar y qué pasa con lo que deciden.
 
 Después de cada tick el mundo deja las parejas que acaban de quedar vecinas. Una pareja piensa si no
-pensó hace poco (pair_cooldown), si ninguna de las dos está esperando otra respuesta y si la mente da
-abasto (max_backlog: el modelo contesta ~1.5 veces por segundo y el mundo no lo espera), y si las dos
-alcanzan a vivir hasta que llegue la respuesta (si no, el pedido se pierde). Primero las de familias
-distintas. Cada célula decide por su cuenta, con una foto de la situación del
-momento. Mientras la pareja piensa las dos se quedan quietas (si no, la respuesta llega ~10 ticks después
-y ya se alejaron); se aplica si las dos siguen vivas y cerca.
+pensó hace poco (pair_cooldown) y si ninguna de las dos está esperando otra respuesta. Con una mente
+lenta (el modelo contesta ~1.5 veces por segundo y el mundo no lo espera) además tiene que dar abasto
+(max_backlog) y las dos tienen que alcanzar a vivir hasta la respuesta (si no, el pedido se pierde);
+primero las de familias distintas. Una mente instantánea piensa en todas. Cada célula decide por su
+cuenta, con una foto de la situación del momento. Mientras la pareja piensa las dos se quedan quietas
+(si no, la respuesta llega ~10 ticks después y ya se alejaron); se aplica si las dos siguen vivas y cerca.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ class Decision:
 
 class Mind(Protocol):
     status: str
+    slow: bool  # tarda ticks en contestar: hay que elegir en qué encuentros piensa
 
     def submit(self, request: Request) -> None: ...
     def poll(self) -> list[Decision]: ...
@@ -114,12 +115,15 @@ class Society:
             if pair[0] in self._pending or pair[1] in self._pending:
                 self.unthought += 1
                 continue
-            if any(c.energy < self.rules.survive * w.rules.upkeep(c.genome) for c in map(w.cells.get, pair)):
+            if self.mind.slow and any(c.energy < self.rules.survive * w.rules.upkeep(c.genome)
+                                      for c in map(w.cells.get, pair)):
                 self.unthought += 1
                 continue
             candidates.append(pair)
         if len(self._cooldown) > 5000:
             self._cooldown = {p: t for p, t in self._cooldown.items() if t > w.tick}
+        if not self.mind.slow:
+            return candidates
 
         chosen = []
         for pair in sorted(candidates, key=lambda p: w.cells[p[0]].lineage == w.cells[p[1]].lineage):
