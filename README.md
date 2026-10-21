@@ -1,77 +1,85 @@
 # Petri
 
-Un cultivo de células en una grilla: comen, se dividen, mutan, compiten por espacio y mueren, y cuando
-se encuentran deciden qué hacer pensando con el mismo modelo chico que usa nani en alfred (nani-4b en
-el Ollama de la GPU, `127.0.0.1:11434`), sin cargar otro. Es un experimento, aparte de nani.
+A culture of cells on a grid: they eat, divide, mutate, compete for space and die, and when they meet
+they decide what to do by thinking with a small local model — the same one a personal assistant
+("nani") already serves on the home server, alfred (`nani-4b` = qwen3:4b-instruct on a 4 GB GPU, via
+Ollama at `127.0.0.1:11434`), without loading another one. It's an experiment, kept apart from nani.
 
-En alfred, con el modelo (deploy: `git push alfred main`, que construye la imagen):
+The cells think and speak in Spanish (the prompt, the actions and their memories); the code, the
+viewer and the docs are in English.
+
+## Running it
+
+On alfred, with the model (deploy with `git push alfred main`, which builds the image):
 
 ```
 ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri run'
 ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri headless --ticks 2000'
 ```
 
-Comparación (deja logs en `~/petri-runs/<fecha>/` y un `resumen.txt`; ~17 min por semilla con el modelo):
+Comparison (logs in `~/petri-runs/<date>/` plus a `summary.txt`; ~17 min per seed with the model):
 
 ```
 ssh alfred 'cd ~/Projects/petri && nohup scripts/alfred/compare.sh 1 2 3 >/dev/null 2>&1 &'
 ```
 
-En el PC, sin modelo o con un túnel al Ollama de alfred:
+On a PC, without the model or through a tunnel to alfred's Ollama:
 
 ```
 uv sync
-uv run petri run                      # mente "rules": sin modelo, el grupo de control
-uv run petri run --mind none --speed 5   # como la fase 1: los encuentros no hacen nada
-uv run petri headless --ticks 5000    # sin visor: cifras cada 250 ticks
+uv run petri run                         # "rules" mind: no model, the control group
+uv run petri run --mind none --speed 5   # encounters do nothing
+uv run petri headless --ticks 5000       # no viewer: numbers every 250 ticks
 ssh -N -L 11435:127.0.0.1:11434 alfred &
 uv run petri run --mind llm --ollama http://127.0.0.1:11435
 uv run pytest
 ```
 
-## El mundo (fase 1, sin modelo)
+## The world
 
-- Grilla toroidal de 32×32 con manchas fértiles: la comida vuelve a crecer según la fertilidad.
-- Cada célula tiene energía, edad y un **genoma**: velocidad, visión, umbral para dividirse y fracción
-  de energía que le pasa a la hija. Correr y ver lejos cuestan energía en cada tick.
-- Va hacia la comida más rica que ve, come, gasta, se divide al llegar a su umbral (la hija hereda el
-  genoma con mutaciones y el linaje) y muere sin energía o a los 500 ticks; lo que le quedaba vuelve
-  al suelo como comida. Una célula por casilla.
+- A 32×32 toroidal grid with fertile patches: food regrows according to fertility.
+- Each cell has energy, an age and a **genome**: speed, vision, the energy at which it divides, the
+  fraction of energy it passes on to its daughter, and **trust**. Moving fast and seeing far cost
+  energy every tick.
+- It heads for the richest food it can see, eats, spends, divides when it reaches its threshold (the
+  daughter inherits the genome with mutations, and the lineage) and dies when it runs out of energy or
+  after 500 ticks; whatever it had left goes back to the ground as food. One cell per tile.
+- Every 300 ticks an **immigrant** from a new family arrives (`--immigrants`, 0 = never): without them
+  one family wins before tick ~2000 and from then on every encounter is between relatives.
 
-## Los encuentros (fase 2)
+## Encounters
 
-Cuando dos células quedan vecinas, cada una decide por su cuenta: **compartir** (le regala el 20% de su
-energía), **atacar** (intenta quitarle el 30%; gana más fácil la que tiene más energía, y si pierde
-pierde el 10% de la suya), **ignorar** o **hablar**, y puede decirle una frase. Al pensar sabe:
+When two cells become neighbors, each one decides on its own: **share** (gives away 20% of its energy),
+**attack** (tries to take 30% of the other's; the one with more energy wins more easily, and a failed
+attack costs 10% of its own), **ignore** or **talk**, and it can say a short phrase. When it thinks it
+knows:
 
-- su **forma de ser**, del gen nuevo **confianza** (0 = muy desconfiada, 1 = muy confiada), que se
-  hereda y muta como los demás: la selección dirá qué conviene;
-- su energía y su hambre, la de la otra, si es de su familia, cuánto pasto hay cerca;
-- lo último que le pasó (le regalaron, la atacaron, le dijeron algo): las 3 últimas cosas.
+- its **personality**, from the **trust** gene (0 = very distrustful, 1 = very trusting), which is
+  inherited and mutates like the others: selection decides what pays off;
+- its energy and hunger, the other's energy, whether the other is family, how much food is nearby;
+- the last 3 things that happened to it (it was given energy, it was attacked, someone said something).
 
-nani-4b contesta en ~0,75 s (JSON con esquema), así que no piensan todos los encuentros: una pareja
-piensa si no lo hizo hace poco, si la mente da abasto (4 pedidos en cola) y si las dos van a vivir hasta
-la respuesta; primero las de familias distintas. Mientras piensan se quedan quietas. Con 4 ticks por
-segundo eso da ~80 decisiones por minuto, casi todas aplicadas. Los pedidos van de a uno: si le hablas a
-nani mientras tanto, espera a lo más una respuesta corta; y si la GPU tiene cargado otro modelo, petri se
-pausa en vez de sacarlo.
+nani-4b answers in ~0.75 s (JSON with a schema), so not every encounter thinks: a pair thinks if it
+hasn't recently, if the mind can keep up (4 requests queued) and if both will live long enough to get
+the answer; pairs from different families go first. While they think, both stand still. At 4 ticks per
+second that's ~80 decisions per minute, nearly all of them applied. Requests go one at a time, so if
+someone talks to nani meanwhile it waits for at most one short answer; and if the GPU has another model
+loaded, petri pauses instead of evicting it.
 
-`--mind rules` decide sin modelo, con la confianza y el hambre: es el grupo de control (¿cambia algo que
-piense un modelo?) y la mente de los tests. Sola piensa en todos los encuentros; con `--latency 3`
-contesta de a una cada 3 ticks, como nani-4b a 4 ticks/s, y piensa en los mismos pocos: esa es la
-comparación justa.
+`--mind rules` decides without a model, from trust and hunger: it's the control group (does it change
+anything when a model thinks?) and the mind the tests use. On its own it thinks about every encounter;
+with `--latency 3` it answers one at a time every 3 ticks, like nani-4b at 4 ticks/s, so it thinks
+about the same few: that's the fair comparison.
 
-Cada 300 ticks llega una **inmigrante** de una familia nueva (`--immigrants`, 0 = nunca): sin ellas una
-familia gana antes del tick ~2000 y desde ahí todos los encuentros son entre parientes.
+In the viewer the green background is food, the dot's color is the lineage and `○` is a hungry cell;
+below, the latest decisions. Same seed and `rules` mind, same culture.
 
-En el visor el fondo verde es la comida, el color del punto es el linaje y `○` es una célula con hambre;
-abajo, lo último que decidieron. Misma semilla y mente `rules`, mismo cultivo.
+## Phases
 
-## Fases
-
-| Fase | | |
+| Phase | | |
 |---|---|---|
-| 1. Mundo sin modelo: comida, energía, genoma, mutación, visor de terminal | ✅ | |
-| 2. Encuentros con nani-4b, gen de confianza, memoria corta, compose en alfred | ✅ | |
-| 3. Personalidad heredada al dividirse, huellas (mensajes en las casillas) | ⏳ | |
-| 4. Historia en SQLite y gráficos de evolución | ⏳ | |
+| 1. World without a model: food, energy, genome, mutation, terminal viewer | ✅ | |
+| 2. Encounters with nani-4b, trust gene, short memory, compose on alfred | ✅ | |
+| 2b. Immigrants, control group with the model's latency, comparison script | ✅ | |
+| 3. Inherited text personality, traces (messages left on tiles) | ⏳ | |
+| 4. History in SQLite and evolution charts | ⏳ | |

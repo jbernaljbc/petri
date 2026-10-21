@@ -1,6 +1,6 @@
-# Petri en alfred. No es un servicio que quede corriendo: se lanza con
+# Petri on alfred. Not a long-running service: launch it with
 #   docker compose run --rm petri run
-# Usa el Ollama de nani (127.0.0.1:11434) con la red del host, sin tocar el compose de nani.
+# Uses nani's Ollama (127.0.0.1:11434) through the host network, without touching nani's compose.
 name: petri
 
 services:

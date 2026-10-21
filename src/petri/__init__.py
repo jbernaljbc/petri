@@ -1,1 +1,1 @@
-"""Petri: un cultivo de células en una grilla que comen, se reproducen, mutan y mueren."""
+"""Petri: a culture of cells on a grid that eat, reproduce, mutate and die."""

@@ -1,11 +1,11 @@
-"""Línea de comandos de Petri.
+"""Petri's command line.
 
-  petri run        el cultivo en vivo en la terminal (Ctrl+C para terminar)
-  petri headless   sin visor, una línea de cifras cada tanto: para afinar el equilibrio
+  petri run        the culture live in the terminal (Ctrl+C to stop)
+  petri headless   no viewer, a line of numbers every so often: for tuning the balance
 
---mind elige quién decide en los encuentros: llm (nani-4b), rules (sin modelo, el grupo de control) o
-none (los encuentros no hacen nada, como en la fase 1). Con --latency, rules contesta tan lento como el
-modelo (en ticks): es el grupo de control justo para comparar con llm.
+--mind picks who decides in encounters: llm (nani-4b), rules (no model, the control group) or none
+(encounters do nothing). With --latency, rules answers as slowly as the model (in ticks): that's the
+fair control group to compare against llm.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from rich.live import Live
 
 from .mind import OllamaMind, RulesMind
 from .society import Society
-from .viewer import Viewer
+from .viewer import ACTIONS, Viewer
 from .world import Rules, World
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -32,11 +32,11 @@ class MindKind(StrEnum):
     none = "none"
 
 
-MIND = typer.Option(MindKind.rules, envvar="PETRI_MIND", help="quién decide en los encuentros")
-OLLAMA = typer.Option("http://127.0.0.1:11434", envvar="PETRI_OLLAMA", help="Ollama de nani")
+MIND = typer.Option(MindKind.rules, envvar="PETRI_MIND", help="who decides in encounters")
+OLLAMA = typer.Option("http://127.0.0.1:11434", envvar="PETRI_OLLAMA", help="nani's Ollama")
 MODEL = typer.Option("nani-4b", envvar="PETRI_MODEL")
-LATENCY = typer.Option(0, help="rules: ticks por respuesta, de a una (3 ≈ nani-4b a 4 ticks/s)")
-IMMIGRANTS = typer.Option(300, help="cada cuántos ticks llega una familia nueva (0 = nunca)")
+LATENCY = typer.Option(0, help="rules: ticks per answer, one at a time (3 ≈ nani-4b at 4 ticks/s)")
+IMMIGRANTS = typer.Option(300, help="every how many ticks a new family arrives (0 = never)")
 
 
 def _build(
@@ -58,18 +58,18 @@ def _step(world: World, society: Society | None) -> None:
 
 @app.command()
 def run(
-    seed: int = typer.Option(1, help="semilla: la misma semilla repite el mismo mundo"),
-    size: int = typer.Option(32, help="lado de la grilla"),
-    cells: int = typer.Option(30, help="células al sembrar"),
-    fps: float = typer.Option(None, help="cuadros por segundo (10; 4 con llm, para que alcancen a pensar)"),
-    ticks_per_frame: int = typer.Option(1, "--speed", help="ticks por cuadro"),
+    seed: int = typer.Option(1, help="seed: the same seed repeats the same world"),
+    size: int = typer.Option(32, help="side of the grid"),
+    cells: int = typer.Option(30, help="cells to seed"),
+    fps: float = typer.Option(None, help="frames per second (10; 4 with llm, so they get to think)"),
+    ticks_per_frame: int = typer.Option(1, "--speed", help="ticks per frame"),
     immigrants: int = IMMIGRANTS,
     mind: MindKind = MIND,
     latency: int = LATENCY,
     ollama: str = OLLAMA,
     model: str = MODEL,
 ) -> None:
-    """Siembra un cultivo y lo muestra en vivo."""
+    """Seeds a culture and shows it live."""
     world, society = _build(seed, size, cells, immigrants, mind, latency, ollama, model)
     fps = fps or (4 if mind is MindKind.llm else 10)
     viewer = Viewer(world, society)
@@ -92,16 +92,16 @@ def headless(
     seed: int = typer.Option(1),
     size: int = typer.Option(32),
     cells: int = typer.Option(30),
-    ticks: int = typer.Option(5000, help="ticks como máximo (para antes si se extinguen)"),
-    every: int = typer.Option(250, help="cada cuántos ticks imprime una línea"),
-    tps: float = typer.Option(None, help="ticks por segundo (sin límite; 4 con llm)"),
+    ticks: int = typer.Option(5000, help="maximum ticks (stops earlier if they go extinct)"),
+    every: int = typer.Option(250, help="print a line every this many ticks"),
+    tps: float = typer.Option(None, help="ticks per second (unlimited; 4 with llm)"),
     immigrants: int = IMMIGRANTS,
     mind: MindKind = MIND,
     latency: int = LATENCY,
     ollama: str = OLLAMA,
     model: str = MODEL,
 ) -> None:
-    """Corre el cultivo sin visor e imprime la evolución."""
+    """Runs the culture without a viewer and prints how it evolves."""
     world, society = _build(seed, size, cells, immigrants, mind, latency, ollama, model)
     tps = tps or (4 if mind is MindKind.llm else 0)
     encounters = births = 0
@@ -115,29 +115,29 @@ def headless(
             if world.tick % every == 0:
                 s = world.summary()
                 genes = " ".join(f"{k[:5]}={v:.2f}" for k, v in s["genes"].items())
-                console.print(f"t={s['tick']:>5} pob={s['population']:>3} lin={s['lineages']:>2} "
+                console.print(f"t={s['tick']:>5} pop={s['population']:>3} lin={s['lineages']:>2} "
                               f"gen={s['max_generation']:>3} {genes} {_actions(society)}")
             if tps:
                 time.sleep(1 / tps)
     except KeyboardInterrupt:
         pass
     genes = " ".join(f"{k[:5]}={v:.2f}" for k, v in world.summary()["genes"].items())
-    console.print(f"[bold]fin[/] t={world.tick} pob={len(world.cells)} pico={peak} nacimientos={births} "
-                  f"encuentros/tick={encounters / max(1, world.tick):.2f} {genes} {_actions(society)}")
+    console.print(f"[bold]end[/] t={world.tick} pop={len(world.cells)} peak={peak} births={births} "
+                  f"encounters/tick={encounters / max(1, world.tick):.2f} {genes} {_actions(society)}")
 
 
 def _actions(society: Society | None) -> str:
     if not society:
         return ""
     total = sum(society.actions.values()) or 1
-    shares = " ".join(f"{a[:4]}={100 * n / total:.0f}%" for a, n in sorted(society.actions.items()))
-    return f"decisiones={sum(society.actions.values())} {shares}"
+    shares = " ".join(f"{ACTIONS[a][0]}={100 * society.actions[a] / total:.0f}%" for a in ACTIONS)
+    return f"decisions={sum(society.actions.values())} {shares}"
 
 
 def _report(world: World, society: Society | None) -> None:
     s = world.summary()
-    status = "extinto" if not world.cells else f"{s['population']} células, {s['lineages']} linajes"
-    console.print(f"tick {s['tick']}: {status}, generación máxima {s['max_generation']} {_actions(society)}")
+    status = "extinct" if not world.cells else f"{s['population']} cells, {s['lineages']} lineages"
+    console.print(f"tick {s['tick']}: {status}, max generation {s['max_generation']} {_actions(society)}")
 
 
 def main() -> None:

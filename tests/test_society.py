@@ -5,7 +5,7 @@ from petri.world import Rules, World
 
 
 class SlowMind:
-    """Una mente que no contesta hasta que el test lo dice, para ver qué pasa con las respuestas tardías."""
+    """A mind that doesn't answer until the test says so, to see what happens with late answers."""
 
     status = "lenta"
     slow = True
@@ -40,12 +40,12 @@ def test_each_cell_thinks_once_per_encounter():
     society = Society(world, mind)
     society.after_step()
     assert sorted((r.cell, r.other) for r in mind.queue) == [(a, b), (b, a)]
-    assert world.frozen == {a, b}  # se detienen a pensar
-    society.after_step()  # sigue la misma lista de encuentros, pero las dos están esperando respuesta
+    assert world.frozen == {a, b}  # they stop to think
+    society.after_step()  # same encounter list, but both are waiting for an answer
     assert len(mind.queue) == 2
     mind.answers = [Decision(mind.queue[0], "ignorar")]
     society.after_step()
-    assert world.frozen == {a, b}  # falta la respuesta de la otra
+    assert world.frozen == {a, b}  # the other one's answer is still missing
     mind.answers = [Decision(mind.queue[1], "ignorar")]
     society.after_step()
     assert world.frozen == set()
@@ -54,7 +54,7 @@ def test_each_cell_thinks_once_per_encounter():
 def test_backlog_limit_leaves_encounters_unthought():
     world, a, b = _pair()
     mind = SlowMind()
-    mind.queue = [None] * 3  # la mente ya está ocupada
+    mind.queue = [None] * 3  # the mind is already busy
     society = Society(world, mind)
     society.after_step()
     assert len(mind.queue) == 3
@@ -77,8 +77,8 @@ def test_attack_either_steals_or_backfires():
     society = Society(world, SlowMind())
     society._apply(Decision(society._request(a, b), "atacar"))
     total = world.cells[a].energy + world.cells[b].energy
-    assert total < 80.0  # el ataque cuesta algo, gane o pierda
-    assert society.log[-1].outcome.startswith(("gana", "pierde"))
+    assert total < 80.0  # attacking costs something, win or lose
+    assert society.log[-1].outcome.startswith(("wins", "loses"))
 
 
 def test_late_decision_does_nothing_if_they_moved_apart():
@@ -125,7 +125,7 @@ def test_parse_keeps_known_actions_and_short_phrases():
 
 def test_instant_mind_thinks_every_encounter_even_hungry_ones():
     world = World(Rules(width=10, height=10), seed=1)
-    for x in range(0, 10, 2):  # cinco parejas, todas con hambre
+    for x in range(0, 10, 2):  # five pairs, all hungry
         world._add(x, 2, 2.0, Genome())
         world._add(x, 3, 2.0, Genome())
     world.encounters = world._new_encounters()

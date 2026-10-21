@@ -1,12 +1,15 @@
-"""Los encuentros: en cuáles piensan las células, qué saben al pensar y qué pasa con lo que deciden.
+"""Encounters: which ones the cells think about, what they know while thinking and what their decisions do.
 
-Después de cada tick el mundo deja las parejas que acaban de quedar vecinas. Una pareja piensa si no
-pensó hace poco (pair_cooldown) y si ninguna de las dos está esperando otra respuesta. Con una mente
-lenta (el modelo contesta ~1.5 veces por segundo y el mundo no lo espera) además tiene que dar abasto
-(max_backlog) y las dos tienen que alcanzar a vivir hasta la respuesta (si no, el pedido se pierde);
-primero las de familias distintas. Una mente instantánea piensa en todas. Cada célula decide por su
-cuenta, con una foto de la situación del momento. Mientras la pareja piensa las dos se quedan quietas
-(si no, la respuesta llega ~10 ticks después y ya se alejaron); se aplica si las dos siguen vivas y cerca.
+After each tick the world leaves the pairs that just became neighbors. A pair thinks if it hasn't
+thought recently (pair_cooldown) and neither cell is waiting for another answer. With a slow mind (the
+model answers ~1.5 times per second and the world doesn't wait for it) the mind must also keep up
+(max_backlog) and both cells must live long enough to get the answer (otherwise the request is wasted);
+pairs from different families go first. An instant mind thinks about all of them. Each cell decides on
+its own, from a snapshot of the situation at that moment. While the pair thinks both cells stand still
+(otherwise the answer arrives ~10 ticks later and they've walked apart); it applies if both are still
+alive and close.
+
+The actions and everything the cells remember are in Spanish: it's the language of the model's prompt.
 """
 
 from __future__ import annotations
@@ -17,22 +20,22 @@ from typing import Protocol
 
 from .world import World
 
-ACTIONS = ("compartir", "atacar", "ignorar", "hablar")
+ACTIONS = ("compartir", "atacar", "ignorar", "hablar")  # share, attack, ignore, talk
 
 
 @dataclass(frozen=True, slots=True)
 class Request:
-    """Lo que una célula sabe cuando piensa."""
+    """What a cell knows when it thinks."""
 
     tick: int
     cell: int
     other: int
     trust: float
     energy: float
-    threshold: float  # energía con la que se divide
+    threshold: float  # energy at which it divides
     other_energy: float
     same_family: bool
-    food_near: float  # 0..1, la comida de las 9 casillas a su alrededor
+    food_near: float  # 0..1, the food on the 9 tiles around it
     memory: tuple[str, ...]
 
 
@@ -47,7 +50,7 @@ class Decision:
 
 class Mind(Protocol):
     status: str
-    slow: bool  # tarda ticks en contestar: hay que elegir en qué encuentros piensa
+    slow: bool  # takes ticks to answer: it has to pick which encounters to think about
 
     def submit(self, request: Request) -> None: ...
     def poll(self) -> list[Decision]: ...
@@ -56,19 +59,19 @@ class Mind(Protocol):
 
 @dataclass(slots=True)
 class SocialRules:
-    share: float = 0.2  # fracción de su energía que regala al compartir
-    steal: float = 0.3  # fracción de la energía de la otra que se lleva si gana un ataque
+    share: float = 0.2  # fraction of its energy it gives away when sharing
+    steal: float = 0.3  # fraction of the other's energy it takes when an attack succeeds
     attack_cost: float = 1.0
-    lose: float = 0.1  # fracción de su energía que pierde si el ataque le sale mal
-    reach: int = 2  # distancia máxima para que la decisión todavía se aplique
-    pair_cooldown: int = 150  # ticks antes de que la misma pareja vuelva a pensar
+    lose: float = 0.1  # fraction of its energy it loses when an attack fails
+    reach: int = 2  # maximum distance for a decision to still apply
+    pair_cooldown: int = 150  # ticks before the same pair thinks again
     max_backlog: int = 4
-    survive: int = 12  # ticks de energía que necesita cada una para que valga la pena que piense
+    survive: int = 12  # ticks of energy each one needs for thinking to be worth it
 
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """Una línea de lo que pasó, para el visor."""
+    """One line of what happened, for the viewer."""
 
     tick: int
     cell: int
@@ -87,12 +90,12 @@ class Society:
         self.rules = rules or SocialRules()
         self.log: deque[Entry] = deque(maxlen=8)
         self.actions: Counter[str] = Counter()
-        self.thoughts = 0  # pedidos a la mente
-        self.unthought = 0  # encuentros que no alcanzaron a pensar
-        self.late = 0  # respuestas que llegaron cuando ya no se podían aplicar
+        self.thoughts = 0  # requests sent to the mind
+        self.unthought = 0  # encounters that didn't get to think
+        self.late = 0  # answers that arrived when they could no longer apply
         self._pending: set[int] = set()
         self._cooldown: dict[tuple[int, int], int] = {}
-        self._open: dict[tuple[int, int], int] = {}  # parejas pensando → respuestas que faltan
+        self._open: dict[tuple[int, int], int] = {}  # pairs thinking → answers still missing
 
     def after_step(self) -> None:
         for decision in self.mind.poll():
@@ -172,7 +175,7 @@ class Society:
         if decision.say and other and self._distance(cell, other) <= self.rules.reach:
             other.memory.append(f"una {_family(other, cell)} te dijo «{decision.say}»")
         if decision.error:
-            outcome = f"(sin respuesta: {decision.error})"
+            outcome = f"(no answer: {decision.error})"
         self.log.append(Entry(w.tick, cell.id, cell.lineage, req.other, other.lineage if other else -1,
                               action, decision.say, outcome))
 
@@ -182,7 +185,7 @@ class Society:
         other.energy = min(self.world.rules.max_energy, other.energy + gift)
         cell.memory.append(f"le regalaste {gift:.0f} de energía a una {_family(cell, other)}")
         other.memory.append(f"una {_family(other, cell)} te regaló {gift:.0f} de energía")
-        return f"le da {gift:.0f}"
+        return f"gives {gift:.0f}"
 
     def _attack(self, cell, other) -> str:
         cell.energy -= self.rules.attack_cost
@@ -192,12 +195,12 @@ class Society:
             cell.energy = min(self.world.rules.max_energy, cell.energy + loot)
             cell.memory.append(f"atacaste a una {_family(cell, other)} y le quitaste {loot:.0f}")
             other.memory.append(f"una {_family(other, cell)} te atacó y te quitó {loot:.0f}")
-            return f"gana, le quita {loot:.0f}"
+            return f"wins, takes {loot:.0f}"
         loss = cell.energy * self.rules.lose
         cell.energy -= loss
         cell.memory.append(f"atacaste a una {_family(cell, other)}, te defendió y perdiste {loss:.0f}")
         other.memory.append(f"una {_family(other, cell)} te atacó y la rechazaste")
-        return f"pierde {loss:.0f}"
+        return f"loses {loss:.0f}"
 
     def _distance(self, a, b) -> int:
         w = self.world

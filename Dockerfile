@@ -1,10 +1,10 @@
-# Petri: Python 3.13 + uv, usuario sin privilegios. Se corre a mano con `docker compose run`.
+# Petri: Python 3.13 + uv, unprivileged user. Run by hand with `docker compose run`.
 FROM python:3.13-slim
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# dependencias primero, para que cambiar el código no las reinstale
+# dependencies first, so changing the code doesn't reinstall them
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 

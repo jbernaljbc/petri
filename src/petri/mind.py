@@ -1,13 +1,15 @@
-"""Las mentes: quién decide qué hace una célula en un encuentro.
+"""Minds: who decides what a cell does in an encounter.
 
-- RulesMind: sin modelo, con la confianza y el hambre. Es el grupo de control del experimento (¿cambia
-  algo que piense un modelo?) y la que usan los tests: misma semilla, mismo cultivo. Con `latency`
-  contesta de a una y tarda esos ticks en cada respuesta, como el modelo: así el control piensa en los
-  mismos pocos encuentros y la comparación es justa.
-- OllamaMind: nani-4b en el Ollama de nani en alfred. Un hilo aparte hace los pedidos de a uno, así nani
-  espera a lo más una respuesta corta si le hablan mientras tanto. No manda num_ctx ni keep_alive (si
-  no coinciden con los de nani, Ollama recargaría el modelo) y se pausa si la GPU tiene otro modelo
-  cargado, para no sacarlo.
+- RulesMind: no model, just trust and hunger. It's the experiment's control group (does it change
+  anything when a model thinks?) and the one the tests use: same seed, same culture. With `latency` it
+  answers one at a time and takes that many ticks per answer, like the model: that way the control
+  thinks about the same few encounters and the comparison is fair.
+- OllamaMind: nani-4b on nani's Ollama on alfred. A separate thread sends the requests one at a time, so
+  nani waits for at most one short answer if someone talks to it meanwhile. It sends neither num_ctx nor
+  keep_alive (if they didn't match nani's, Ollama would reload the model) and it pauses if the GPU has
+  another model loaded, so it never evicts it.
+
+The prompt, the actions and the cells' phrases are in Spanish.
 """
 
 from __future__ import annotations
@@ -27,9 +29,9 @@ from .society import ACTIONS, Decision, Request
 class RulesMind:
     def __init__(self, seed: int, latency: int = 0) -> None:
         self.rng = random.Random(seed)
-        self.latency = latency  # ticks por respuesta; 0 = contesta al tiro y piensan todos los encuentros
+        self.latency = latency  # ticks per answer; 0 = answers right away and every encounter thinks
         self.slow = latency > 0
-        self.status = f"reglas, {latency} ticks por respuesta (como el modelo)" if self.slow else "reglas (sin modelo)"
+        self.status = f"rules, {latency} ticks per answer (like the model)" if self.slow else "rules (no model)"
         self._queue: deque[Request] = deque()
         self._out: list[Decision] = []
         self._clock = 0
@@ -41,7 +43,7 @@ class RulesMind:
             self._out.append(Decision(request, self._decide(request)))
 
     def poll(self) -> list[Decision]:
-        """Se llama una vez por tick: con latencia, cada `latency` ticks sale una respuesta."""
+        """Called once per tick: with latency, one answer comes out every `latency` ticks."""
         if self._queue:
             self._clock += 1
             if self._clock >= self.latency:
@@ -116,7 +118,7 @@ class OllamaMind:
     def __init__(self, url: str, model: str, timeout: float = 30.0) -> None:
         self.url = url.rstrip("/")
         self.model = model
-        self.status = "esperando"
+        self.status = "waiting"
         self.slow = True
         self.latencies: deque[float] = deque(maxlen=20)
         self.errors = 0
@@ -158,17 +160,17 @@ class OllamaMind:
                 self._working = False
 
     def _wait_for_gpu(self) -> None:
-        """Si la GPU tiene cargado otro modelo, no se lo quita: espera a que se desocupe o vuelva el suyo."""
+        """If the GPU has another model loaded, don't evict it: wait until it's free or ours is back."""
         while time.monotonic() - self._checked > 5:
             try:
                 loaded = [m.get("name", "") for m in self._client.get("/api/ps").json().get("models", [])]
             except (httpx.HTTPError, ValueError) as e:
-                self.status = f"sin Ollama: {type(e).__name__}"
-                return  # el pedido mismo va a fallar y quedará como error
+                self.status = f"no Ollama: {type(e).__name__}"
+                return  # the request itself will fail and be recorded as an error
             if not loaded or any(name.split(":")[0] == self.model.split(":")[0] for name in loaded):
                 self._checked = time.monotonic()
                 return
-            self.status = f"en pausa: la GPU tiene {', '.join(loaded)}"
+            self.status = f"paused: the GPU has {', '.join(loaded)}"
             time.sleep(5)
 
     def _think(self, request: Request) -> Decision:
@@ -191,7 +193,7 @@ class OllamaMind:
         seconds = time.monotonic() - start
         self.latencies.append(seconds)
         self.errors = 0
-        self.status = f"{self.model} · {self.mean_latency():.2f} s por decisión"
+        self.status = f"{self.model} · {self.mean_latency():.2f} s per decision"
         return Decision(request, answer["accion"], answer["dice"], seconds)
 
 

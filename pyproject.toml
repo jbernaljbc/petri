@@ -1,7 +1,7 @@
 [project]
 name = "petri"
 version = "0.2.0"
-description = "Petri: células que viven, compiten y evolucionan en una grilla, y piensan sus encuentros con un modelo chico"
+description = "Petri: cells that live, compete and evolve on a grid, and think through their encounters with a small model"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -31,7 +31,7 @@ target-version = "py313"
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# el prompt para el modelo: se lee mejor en líneas enteras
+# the model's prompt reads better in whole lines
 "src/petri/mind.py" = ["E501"]
 
 [tool.pytest.ini_options]

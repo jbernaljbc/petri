@@ -1,12 +1,12 @@
-"""El mundo: una grilla toroidal con comida que vuelve a crecer y células que viven en ella.
+"""The world: a toroidal grid with regrowing food and the cells that live on it.
 
-Fase 1, sin modelo: cada célula va hacia la comida más rica que ve, come, gasta energía según su genoma,
-se divide cuando junta bastante (la hija hereda el genoma con mutaciones) y muere sin energía o de vieja.
-Una casilla tiene a lo más una célula, así que el espacio también se compite. Cada tanto llega una
-inmigrante de una familia nueva, para que nunca quede un solo linaje para siempre.
+Without a model: each cell heads for the richest food it can see, eats, spends energy according to its
+genome, divides once it has gathered enough (the daughter inherits the genome with mutations) and dies
+when it runs out of energy or of old age. A tile holds at most one cell, so space is contested too.
+Every so often an immigrant from a new family arrives, so a single lineage never stays alone forever.
 
-Los "encuentros" (dos células que pasan a ser vecinas) quedan en `World.encounters` después de cada
-tick: society.py decide en cuáles piensan las células y aplica lo que deciden.
+"Encounters" (two cells that just became neighbors) are left in `World.encounters` after each tick:
+society.py decides which of them the cells think about and applies what they decide.
 """
 
 from __future__ import annotations
@@ -25,18 +25,18 @@ NEIGHBORS = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy]
 class Rules:
     width: int = 32
     height: int = 32
-    food_max: float = 10.0  # comida máxima por casilla
-    regrow: float = 0.08  # lo que crece por tick una casilla de fertilidad 1
-    patches: int = 4  # manchas fértiles
-    bite: float = 4.0  # lo que come una célula por tick
-    base_cost: float = 0.4  # energía por tick solo por vivir
+    food_max: float = 10.0  # maximum food per tile
+    regrow: float = 0.08  # growth per tick on a tile with fertility 1
+    patches: int = 4  # fertile patches
+    bite: float = 4.0  # what a cell eats per tick
+    base_cost: float = 0.4  # energy per tick just for being alive
     speed_cost: float = 0.25  # × speed²
     vision_cost: float = 0.08  # × vision
     max_energy: float = 150.0
     max_age: int = 500
     mutation_rate: float = 0.3
     start_energy: float = 40.0
-    immigrants: int = 300  # cada cuántos ticks llega una célula de una familia nueva (0 = nunca)
+    immigrants: int = 300  # every how many ticks a cell from a new family arrives (0 = never)
 
     def upkeep(self, genome: Genome) -> float:
         return self.base_cost + self.speed_cost * genome.speed**2 + self.vision_cost * genome.vision
@@ -51,10 +51,10 @@ class Cell:
     genome: Genome
     born: int
     generation: int = 0
-    lineage: int = 0  # id de la fundadora de su linaje
+    lineage: int = 0  # id of its lineage's founder
     parent: int | None = None
-    stride: float = 0.0  # fracción de paso acumulada (speed no es entera)
-    memory: deque[str] = field(default_factory=lambda: deque(maxlen=3))  # lo último que le pasó, para el modelo
+    stride: float = 0.0  # accumulated fraction of a step (speed is not an integer)
+    memory: deque[str] = field(default_factory=lambda: deque(maxlen=3))  # what happened to it lately, for the model
 
 
 @dataclass(slots=True)
@@ -74,7 +74,7 @@ class World:
     tick: int = 0
     cells: dict[int, Cell] = field(default_factory=dict)
     last: TickStats = field(default_factory=TickStats)
-    encounters: list[tuple[int, int]] = field(default_factory=list)  # parejas nuevas del último tick
+    encounters: list[tuple[int, int]] = field(default_factory=list)  # new pairs from the last tick
 
     def __post_init__(self) -> None:
         self.rng = random.Random(self.seed)
@@ -83,12 +83,12 @@ class World:
         self._at: dict[tuple[int, int], int] = {}
         self._next_id = 1
         self._pairs: set[tuple[int, int]] = set()
-        self.frozen: set[int] = set()  # células que se detuvieron a pensar: comen y gastan, pero no caminan
+        self.frozen: set[int] = set()  # cells that stopped to think: they eat and spend, but don't walk
 
-    # ---- armar el cultivo
+    # ---- setting up the culture
 
     def _fertility(self) -> list[float]:
-        """Manchas gaussianas en el toro, entre 0.05 (árido) y 1 (fértil)."""
+        """Gaussian patches on the torus, between 0.05 (barren) and 1 (fertile)."""
         w, h = self.rules.width, self.rules.height
         sigma = min(w, h) / 6
         centers = [(self.rng.uniform(0, w), self.rng.uniform(0, h)) for _ in range(self.rules.patches)]
@@ -105,7 +105,7 @@ class World:
         return [0.05 + 0.95 * v / top for v in raw]
 
     def seed_cells(self, count: int) -> int:
-        """Siembra fundadoras (o inmigrantes): genoma al azar y una familia nueva cada una."""
+        """Seeds founders (or immigrants): a random genome and a new family each."""
         free = [(x, y) for y in range(self.rules.height) for x in range(self.rules.width) if (x, y) not in self._at]
         spots = self.rng.sample(free, min(count, len(free)))
         for x, y in spots:
@@ -122,7 +122,7 @@ class World:
         self._at[(x, y)] = cell.id
         return cell
 
-    # ---- geometría
+    # ---- geometry
 
     def index(self, x: int, y: int) -> int:
         return y * self.rules.width + x
@@ -131,7 +131,7 @@ class World:
         return x % self.rules.width, y % self.rules.height
 
     def delta(self, a: int, b: int, size: int) -> int:
-        """Distancia con signo de a hacia b por el camino más corto del toro."""
+        """Signed distance from a to b along the torus' shortest way."""
         return (b - a + size // 2) % size - size // 2
 
     def free_neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
@@ -142,7 +142,7 @@ class World:
         cid = self._at.get((x, y))
         return self.cells[cid] if cid else None
 
-    # ---- un tick
+    # ---- one tick
 
     def step(self) -> TickStats:
         self.tick += 1
@@ -179,7 +179,7 @@ class World:
         cell.stride -= steps
         for _ in range(steps):
             if self.food[self.index(cell.x, cell.y)] >= self.rules.bite:
-                return  # aquí hay comida de sobra: se queda comiendo
+                return  # plenty of food here: it stays and eats
             target = self._best_food(cell)
             spot = self._step_toward(cell, target) if target else None
             if spot is None:
@@ -192,9 +192,9 @@ class World:
             self._at[spot] = cell.id
 
     def _best_food(self, cell: Cell) -> tuple[int, int] | None:
-        """La casilla libre con más comida dentro de su visión (a igual comida, la más cercana)."""
-        # la fracción cuenta como probabilidad de ver una casilla más: si no, 1.9 vería lo mismo que 1.0 y
-        # costaría más, y la selección siempre bajaría la visión al mínimo
+        """The free tile with the most food within its vision (the closest one on ties)."""
+        # the fraction counts as the probability of seeing one tile further: otherwise 1.9 would see the
+        # same as 1.0 while costing more, and selection would always push vision down to the minimum
         vision = cell.genome.vision
         radius = int(vision) + (self.rng.random() < vision % 1)
         here = self.food[self.index(cell.x, cell.y)]
@@ -239,17 +239,17 @@ class World:
         return True
 
     def _die(self, cell: Cell) -> None:
-        """La energía que le quedaba vuelve al suelo como comida."""
+        """Whatever energy it had left goes back to the ground as food."""
         i = self.index(cell.x, cell.y)
         self.food[i] = min(self.rules.food_max, self.food[i] + max(0.0, cell.energy) * 0.5)
         del self._at[(cell.x, cell.y)]
         del self.cells[cell.id]
 
     def _new_encounters(self) -> list[tuple[int, int]]:
-        """Parejas de vecinas que no lo eran en el tick anterior, en orden estable (id menor primero)."""
+        """Pairs of neighbors that weren't neighbors in the previous tick, in stable order (lower id first)."""
         pairs = set()
         for (x, y), cid in self._at.items():
-            for dx, dy in NEIGHBORS[4:]:  # la mitad de los vecinos basta para ver cada pareja una vez
+            for dx, dy in NEIGHBORS[4:]:  # half the neighbors is enough to see each pair once
                 other = self._at.get(self.wrap(x + dx, y + dy))
                 if other:
                     pairs.add((min(cid, other), max(cid, other)))
@@ -257,7 +257,7 @@ class World:
         self._pairs = pairs
         return new
 
-    # ---- para mirar
+    # ---- for watching
 
     def summary(self) -> dict:
         cells = list(self.cells.values())

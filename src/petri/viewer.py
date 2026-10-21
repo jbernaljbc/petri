@@ -1,5 +1,5 @@
-"""Visor de terminal: la grilla (fondo verde = comida, punto de color = célula por linaje), las cifras y
-lo último que decidieron las células en sus encuentros."""
+"""Terminal viewer: the grid (green background = food, colored dot = cell by lineage), the numbers and
+the latest decisions the cells made in their encounters."""
 
 from __future__ import annotations
 
@@ -19,10 +19,12 @@ LINEAGE_COLORS = [
 ]
 SPARK = "▁▂▃▄▅▆▇█"
 GENE_LABELS = {
-    "speed": "velocidad", "vision": "visión", "repro_threshold": "umbral div.", "child_share": "% a la hija",
-    "trust": "confianza",
+    "speed": "speed", "vision": "vision", "repro_threshold": "divide at", "child_share": "% to daughter",
+    "trust": "trust",
 }
-ACTION_STYLES = {"compartir": "green", "atacar": "red", "ignorar": "dim", "hablar": "cyan"}
+# the model's actions (Spanish) → label and style on screen
+ACTIONS = {"compartir": ("share", "green"), "atacar": ("attack", "red"), "ignorar": ("ignore", "dim"),
+           "hablar": ("talk", "cyan")}
 
 
 def lineage_color(lineage: int) -> str:
@@ -55,33 +57,33 @@ class Viewer:
                 bg = f"rgb(0,{int(25 + 140 * level)},0)"
                 cell = w.cell_at(x, y)
                 if cell:
-                    glyph = "●" if cell.energy >= cell.genome.repro_threshold / 2 else "○"  # ○ = con hambre
+                    glyph = "●" if cell.energy >= cell.genome.repro_threshold / 2 else "○"  # ○ = hungry
                     text.append(glyph, style=f"{lineage_color(cell.lineage)} on {bg}")
                     text.append(" ", style=f"on {bg}")
                 else:
                     text.append("  ", style=f"on {bg}")
             text.append("\n")
         text.rstrip()
-        return Panel(text, title=f"petri · semilla {w.seed} · tick {w.tick}", expand=False)
+        return Panel(text, title=f"petri · seed {w.seed} · tick {w.tick}", expand=False)
 
     def _stats(self) -> Table:
         s = self.world.summary()
         table = Table.grid(padding=(0, 2))
         table.add_column(style="dim")
         table.add_column()
-        table.add_row("población", f"{s['population']}  {_spark(self.population)}")
-        table.add_row("encuentros/tick", f"{self.world.last.encounters}  {_spark(self.encounters)}")
-        table.add_row("linajes · generación", f"{s['lineages']} · {s['max_generation']}")
-        table.add_row("comida · energía", f"{s['food']:.0f} · {s['energy']:.0f}")
+        table.add_row("population", f"{s['population']}  {_spark(self.population)}")
+        table.add_row("encounters/tick", f"{self.world.last.encounters}  {_spark(self.encounters)}")
+        table.add_row("lineages · generation", f"{s['lineages']} · {s['max_generation']}")
+        table.add_row("food · energy", f"{s['food']:.0f} · {s['energy']:.0f}")
         genes = "  ".join(f"{GENE_LABELS[k]} {v:.2f}" for k, v in s["genes"].items())
-        table.add_row("genes (media)", genes or "—")
+        table.add_row("genes (mean)", genes or "—")
         if soc := self.society:
-            table.add_row("mente", soc.mind.status)
+            table.add_row("mind", soc.mind.status)
             total = sum(soc.actions.values()) or 1
-            actions = "  ".join(f"[{ACTION_STYLES[a]}]{a} {100 * soc.actions[a] / total:.0f}%[/]"
-                                for a in ACTION_STYLES)
-            table.add_row("decisiones", f"{sum(soc.actions.values())}  {actions}")
-            table.add_row("sin pensar · tarde", f"{soc.unthought} · {soc.late}")
+            actions = "  ".join(f"[{style}]{label} {100 * soc.actions[a] / total:.0f}%[/]"
+                                for a, (label, style) in ACTIONS.items())
+            table.add_row("decisions", f"{sum(soc.actions.values())}  {actions}")
+            table.add_row("unthought · late", f"{soc.unthought} · {soc.late}")
         return table
 
     def _log(self) -> Panel:
@@ -91,14 +93,15 @@ class Viewer:
             text.append(f"#{e.cell}", style=lineage_color(e.lineage))
             text.append(" → ")
             text.append(f"#{e.other}", style=lineage_color(e.other_lineage) if e.other_lineage >= 0 else "dim")
-            text.append(f"  {e.action}", style=ACTION_STYLES.get(e.action, ""))
+            label, style = ACTIONS.get(e.action, (e.action, ""))
+            text.append(f"  {label}", style=style)
             if e.say:
                 text.append(f"  «{e.say}»", style="italic")
             if e.outcome:
                 text.append(f"  {e.outcome}", style="dim")
             text.append("\n")
         text.rstrip()
-        return Panel(text or Text("todavía nadie ha decidido nada", style="dim"), title="encuentros", expand=False)
+        return Panel(text or Text("nobody has decided anything yet", style="dim"), title="encounters", expand=False)
 
 
 def _spark(values: deque[int]) -> str:

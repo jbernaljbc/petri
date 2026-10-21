@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Comparación en alfred: las mismas semillas con nani-4b y con el control (reglas con la misma latencia,
-# y reglas instantáneas). Cada corrida deja su log en ~/petri-runs/<fecha>/; el resumen queda en resumen.txt.
+# Comparison on alfred: the same seeds with nani-4b and with the control (rules with the same latency,
+# and instant rules). Each run leaves its log in ~/petri-runs/<date>/; the summary goes to summary.txt.
 #   nohup scripts/alfred/compare.sh 1 2 3 > /dev/null 2>&1 &
-# Con el modelo a 4 ticks/s, 4000 ticks son ~17 min por semilla (de a una: la GPU es una sola).
+# With the model at 4 ticks/s, 4000 ticks take ~17 min per seed (one at a time: there's a single GPU).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 TICKS=${TICKS:-4000}
 OUT=~/petri-runs/$(date +%F-%H%M)
 mkdir -p "$OUT"
-run() {  # nombre, argumentos de petri headless
+run() {  # name, petri headless arguments
     local name=$1; shift
     docker compose run --rm -T petri headless --ticks "$TICKS" --every 500 "$@" > "$OUT/$name.log" 2>&1 </dev/null
-    echo "$name: $(grep '^fin' "$OUT/$name.log")" >> "$OUT/resumen.txt"
+    echo "$name: $(grep '^end' "$OUT/$name.log")" >> "$OUT/summary.txt"
 }
 for seed in "$@"; do
     run "s$seed-rules" --mind rules --seed "$seed"
@@ -20,4 +20,4 @@ done
 for seed in "$@"; do
     run "s$seed-llm" --mind llm --seed "$seed"
 done
-echo "listo $(date +%T)" >> "$OUT/resumen.txt"
+echo "done $(date +%T)" >> "$OUT/summary.txt"

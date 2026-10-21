@@ -64,7 +64,7 @@ def test_encounter_counts_only_new_neighbors():
     a = world._add(2, 2, 50.0, Genome())
     world._add(3, 2, 50.0, Genome())
     assert world._new_encounters() == [(1, 2)]
-    assert world._new_encounters() == []  # siguen juntas: no es un encuentro nuevo
+    assert world._new_encounters() == []  # still together: not a new encounter
     del world._at[(a.x, a.y)]
     a.x = 7
     world._at[(a.x, a.y)] = a.id

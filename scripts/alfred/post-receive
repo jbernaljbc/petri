@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Deploy de petri en alfred: `git push alfred main` desde el PC. Con
-# receive.denyCurrentBranch=updateInstead el árbol ya quedó actualizado cuando corre este hook.
+# Petri deploy on alfred: `git push alfred main` from the PC. With
+# receive.denyCurrentBranch=updateInstead the working tree is already updated when this hook runs.
 set -euo pipefail
-# el hook corre dentro de .git (GIT_DIR=.): el árbol de trabajo es la carpeta de arriba
+# the hook runs inside .git (GIT_DIR=.): the working tree is the parent folder
 cd "$(dirname "$(cd "${GIT_DIR:-.}" && pwd)")"
 unset GIT_DIR
 while read -r _old _new ref; do
-    [ "$ref" = refs/heads/main ] || { echo "solo se despliega main (recibido $ref)"; exit 0; }
+    [ "$ref" = refs/heads/main ] || { echo "only main is deployed (got $ref)"; exit 0; }
 done
 echo "==> docker compose build"
 docker compose build
-echo "listo: ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri run'"
+echo "done: ssh -t alfred 'cd ~/Projects/petri && docker compose run --rm petri run'"
